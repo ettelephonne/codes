@@ -2,10 +2,11 @@ import numpy as np
 import argparse
 import cv2
 import os
-
+from astropy.visualization import (MinMaxInterval, SqrtStretch,
+                                   ImageNormalize, PercentileInterval)
 
 # mettre un chiffre différent entre les différentes utilisations pour ne pas que les fichiers s écrasent.
-n = input('numero du film à faire? = ')
+n = input('nom du film à faire? = ')
 
 # Les options à remplir. Il faut changer les adresses
 ap = argparse.ArgumentParser()
@@ -15,7 +16,7 @@ ap.add_argument("-o", "--output", default='/home/ettelephonne/projet_visionmeteo
 	help="base path to output directory")
 ap.add_argument("-m", "--mask-rcnn", default="/home/ettelephonne/pyImage_search/opencv-dnn-gpu-examples/opencv-mask-rcnn-cuda/mask-rcnn-coco",
 	help="base path to mask-rcnn directory")
-ap.add_argument("-c", "--confidence", type=float, default=0.5,
+ap.add_argument("-c", "--confidence", type=float, default=0.4,
 	help="minimum probability to filter weak detections")
 ap.add_argument("-t", "--threshold", type=float, default=0.8,
 	help="minimum threshold for pixel-wise mask segmentation")
@@ -75,24 +76,24 @@ for i in range(int(len(matrices)/2)):
 		"detection_masks"])
 
 	# il faut looper à l intérieur des détections pour en extraire les infos
-	for i in range(0, boxes.shape[2]):
+	for j in range(0, boxes.shape[2]):
 		# l indice (pour le label)
-		classID = int(boxes[0, 0, i, 1])
+		classID = int(boxes[0, 0, j, 1])
 		# la confiance associée à la détection
-		confidence = boxes[0, 0, i, 2]
+		confidence = boxes[0, 0, j, 2]
 
 		# on ne veut garder que les détections avec une confiance supérieure à l'option choisie
 		if confidence > args["confidence"]:
 			# les coordonnées des boîtes sont réajustées par rapport à la taille de l'image
 			(H, W) = color_image.shape[:2]
-			box = boxes[0, 0, i, 3:7] * np.array([W, H, W, H])
+			box = boxes[0, 0, j, 3:7] * np.array([W, H, W, H])
 			# les coordonnées sont extraites
 			(startX, startY, endX, endY) = box.astype("int")
 			boxW = endX - startX
 			boxH = endY - startY
 
 			# extrait le masque et son label
-			mask = masks[i, classID]
+			mask = masks[j, classID]
 			# le masque est reproportionné à la taille de l image
 			mask = cv2.resize(mask, (boxW, boxH),
 				interpolation=cv2.INTER_CUBIC)
@@ -128,14 +129,15 @@ for i in range(int(len(matrices)/2)):
 			# écriture de la distance au dessus de la boîte (color)
 			cv2.putText(color_image, str(distance) + ' m', (startX, startY - 20), fnt, 1, color, 2)
 
-	# pour être stackée avec l'image couleur, la depth image doit avoir 3 bandes et les valeurs stretchées
-	depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.008), cv2.COLORMAP_JET)
+	#un stretch s impose pour un bel affichage
+	depth_image = cv2.equalizeHist((depth_image/ np.max(depth_image) * 255).astype(np.uint8))
+	# pour être stackée avec l'image couleur, la depth image doit avoir 3 bandes
+	depth_colormap = np.dstack((depth_image, depth_image, depth_image))
 	images = np.hstack((depth_colormap, color_image))
-
-	# écriture du vidéo (attention au choix du fps
+	# écriture du vidéo (attention au choix du fps)
 	if args["output"] != "" and writer is None:
 		fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-		writer = cv2.VideoWriter(args["output"], fourcc, 16,
+		writer = cv2.VideoWriter(args["output"], fourcc, 15,
 			(images.shape[1], images.shape[0]), True)
 
 	if writer is not None:
